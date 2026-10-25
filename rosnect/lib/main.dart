@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'live_sensors.dart';
 import 'package:ros2_embedded_bridge_client/ros2_embedded_bridge_client.dart';
 
 void main() => runApp(const RosnectApp());
@@ -11,10 +12,23 @@ class RosnectApp extends StatefulWidget {
 
 class _RosnectAppState extends State<RosnectApp> {
   final _session = ConnectionSession();
+  late final LiveSensors _live = LiveSensors(_session);
   int _index = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _live.addListener(_refresh);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _live.removeListener(_refresh);
+    _live.dispose();
     _session.dispose();
     super.dispose();
   }
@@ -49,8 +63,8 @@ class _RosnectAppState extends State<RosnectApp> {
               index: _index,
               children: [
                 ConnectionsPage(session: _session),
-                SensorPage(client: _session.client),
-                SubscribePage(client: _session.client),
+                SensorPage(live: _live),
+                SubscribePage(live: _live),
               ],
             ),
           ),
@@ -157,6 +171,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
           const Text(
               'One active connection at a time. Connecting replaces the current connection.'),
           const SizedBox(height: 16),
+          const Text(
+              'After connecting, enable sensors in Sensors. ROS interfaces must be acknowledged before data streams.'),
+          const SizedBox(height: 8),
           Card(
               child: Padding(
             padding: const EdgeInsets.all(16),
@@ -379,109 +396,163 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   }
 }
 
-class SensorPage extends StatefulWidget {
-  const SensorPage({required this.client, super.key});
-
-  final BridgeClient? client;
-
+class SensorPage extends StatelessWidget {
+  const SensorPage({required this.live, super.key});
+  final LiveSensors live;
   @override
-  State<SensorPage> createState() => _SensorPageState();
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Live phone sensors',
+              style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          Text(!live.session.isConnected
+              ? 'Connect to your MQTT broker first.'
+              : live.interfaces.ready
+                  ? 'ROS interfaces ready · streaming enabled sensors'
+                  : 'Waiting for ROS bridge to accept the sensor interfaces…'),
+          if (live.interfaces.error != null)
+            Text(live.interfaces.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (live.globalError != null) Text(live.globalError!),
+          Wrap(spacing: 12, children: [
+            TextButton.icon(
+                onPressed:
+                    live.session.isConnected ? live.interfaces.resync : null,
+                icon: const Icon(Icons.sync),
+                label: const Text('Retry ROS setup')),
+            TextButton.icon(
+                onPressed: live.settings,
+                icon: const Icon(Icons.settings),
+                label: const Text('App permissions')),
+          ]),
+          const Text(
+              'Capture pauses when the app is backgrounded or the screen locks. Enable each source to share it.'),
+          for (final item in live.sensors.values)
+            _SensorCard(
+                key: ValueKey(item.definition.kind), live: live, item: item),
+        ],
+      );
 }
 
-class _SensorPageState extends State<SensorPage> {
-  late List<EnabledPhoneSensor> _sensors;
-
-  @override
-  void initState() {
-    super.initState();
-    _sensors = defaultSensorSelection();
-  }
-
+class _SensorCard extends StatelessWidget {
+  const _SensorCard({required this.live, required this.item, super.key});
+  final LiveSensors live;
+  final EnabledPhoneSensor item;
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _sensors.length,
-      itemBuilder: (context, index) {
-        final item = _sensors[index];
-        return Card(
-          child: Padding(
+    final kind = item.definition.kind;
+    final supported = live.available[kind] ?? false;
+    final topic = live.interfaces.topicFor(item.identifier);
+    return Card(
+        child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SwitchListTile(
-                  value: item.enabled,
-                  title: Text(item.definition.name),
-                  subtitle: Text(item.definition.description),
-                  onChanged: (value) {
-                    setState(() {
-                      _sensors[index] = item.copyWith(enabled: value);
-                    });
-                  },
-                ),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item.definition.name),
+                    value: item.enabled,
+                    subtitle: Text(supported
+                        ? item.definition.description
+                        : 'Unavailable on this device'),
+                    onChanged:
+                        supported ? (value) => live.enable(kind, value) : null),
                 TextFormField(
-                  initialValue: item.identifier,
-                  decoration: const InputDecoration(labelText: 'Identifier'),
-                  onChanged: (value) {
-                    _sensors[index] = item.copyWith(identifier: value);
-                  },
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.upload),
-                    label: const Text('Publish sample'),
-                    onPressed: item.enabled ? () => _publishSample(item) : null,
-                  ),
-                ),
+                    initialValue: item.identifier,
+                    decoration: const InputDecoration(
+                        labelText: 'Identifier (submit to apply)'),
+                    onFieldSubmitted: (value) =>
+                        live.rename(kind, value.trim())),
+                const SizedBox(height: 8),
+                Text(sensorMessageTypes[kind]!,
+                    style: Theme.of(context).textTheme.labelSmall),
+                if (topic != null)
+                  SelectableText(topic,
+                      style: Theme.of(context).textTheme.labelSmall),
+                if (live.errors[kind] != null)
+                  Text(live.errors[kind]!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
+                if (item.enabled && live.latest.containsKey(kind))
+                  Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                          'Sent ${live.sent[kind] ?? 0} · ${live.latest[kind]}',
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis)),
+                if (kind == PhoneSensorKind.camera && item.enabled) ...[
+                  Row(children: [
+                    Expanded(
+                        child: DropdownButtonFormField<bool>(
+                            value: live.frontCamera,
+                            decoration:
+                                const InputDecoration(labelText: 'Camera'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: false, child: Text('Rear')),
+                              DropdownMenuItem(
+                                  value: true, child: Text('Front'))
+                            ],
+                            onChanged: (v) => live.cameraOptions(front: v))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: DropdownButtonFormField<int>(
+                            value: live.cameraFps,
+                            decoration: const InputDecoration(
+                                labelText: 'Frames / second'),
+                            items: [
+                              for (final n in [1, 2, 5])
+                                DropdownMenuItem(
+                                    value: n, child: Text('$n FPS'))
+                            ],
+                            onChanged: (v) => live.cameraOptions(fps: v))),
+                  ]),
+                  const SizedBox(height: 8),
+                  if (live.cameraPreview != null)
+                    Image.memory(live.cameraPreview!,
+                        gaplessPlayback: true,
+                        height: 220,
+                        fit: BoxFit.contain),
+                  const Text(
+                      'JPEG up to 640 × 640 · quality 55 · default 2 FPS'),
+                ],
+                if (kind == PhoneSensorKind.touch && item.enabled)
+                  SizedBox(
+                      height: 160,
+                      child: LayoutBuilder(
+                          builder: (context, constraints) => GestureDetector(
+                              onPanStart: (e) => live.touch(
+                                  e.localPosition, constraints.biggest, 'down'),
+                              onPanUpdate: (e) => live.touch(
+                                  e.localPosition, constraints.biggest, 'move'),
+                              onPanEnd: (_) => live.touch(
+                                  Offset.zero, constraints.biggest, 'up'),
+                              onTapDown: (e) => live.touch(
+                                  e.localPosition, constraints.biggest, 'tap'),
+                              child: Container(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .secondaryContainer,
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                      'Touch or drag here to publish coordinates'))))),
               ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _publishSample(EnabledPhoneSensor sensor) async {
-    final client = widget.client;
-    if (client == null || !client.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connect first')),
-      );
-      return;
-    }
-
-    try {
-      await client.writeData(sensor.identifier, {
-        'sensor': sensor.definition.name,
-        'sample': true,
-        'value': 1.0,
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Published ${sensor.identifier}')),
-      );
-    } on Object catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    }
+            )));
   }
 }
 
 class SubscribePage extends StatefulWidget {
-  const SubscribePage({required this.client, super.key});
-
-  final BridgeClient? client;
-
+  const SubscribePage({required this.live, super.key});
+  final LiveSensors live;
   @override
   State<SubscribePage> createState() => _SubscribePageState();
 }
 
 class _SubscribePageState extends State<SubscribePage> {
   final _identifier = TextEditingController(text: 'robot.status');
-  final _subscriptions = SubscriptionStore();
-
+  BridgeValueType _type = BridgeValueType.string;
   @override
   void dispose() {
     _identifier.dispose();
@@ -489,73 +560,60 @@ class _SubscribePageState extends State<SubscribePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _identifier,
-                decoration:
-                    const InputDecoration(labelText: 'Identifier to subscribe'),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Add subscription',
-              icon: const Icon(Icons.add),
-              onPressed: () {
-                if (_identifier.text.trim().isNotEmpty) {
-                  setState(() => _subscriptions.add(_identifier.text.trim()));
-                }
-              },
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.all(16), children: [
+        const Text(
+            'Subscriptions become ROS command topics after bridge acknowledgement.'),
         const SizedBox(height: 12),
-        for (final subscription in _subscriptions.items)
+        TextField(
+            controller: _identifier,
+            decoration:
+                const InputDecoration(labelText: 'Identifier to subscribe')),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<BridgeValueType>(
+            value: _type,
+            decoration: const InputDecoration(labelText: 'Expected value type'),
+            items: [
+              for (final type in BridgeValueType.values)
+                DropdownMenuItem(value: type, child: Text(type.name))
+            ],
+            onChanged: (v) =>
+                setState(() => _type = v ?? BridgeValueType.string)),
+        FilledButton.icon(
+            onPressed: () =>
+                widget.live.addSubscription(_identifier.text.trim(), _type),
+            icon: const Icon(Icons.add),
+            label: const Text('Add subscription')),
+        if (widget.live.globalError != null) Text(widget.live.globalError!),
+        for (final entry in widget.live.subscriptions.entries)
           ListTile(
-            leading: const Icon(Icons.topic),
-            title: Text(subscription.identifier),
-            subtitle: widget.client == null
-                ? const Text('Connect first')
-                : _SubscriptionValue(
-                    client: widget.client!,
-                    identifier: subscription.identifier,
-                  ),
-            trailing: IconButton(
-              tooltip: 'Remove',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () {
-                setState(() => _subscriptions.remove(subscription.identifier));
-              },
-            ),
-          ),
-      ],
-    );
-  }
+              title: Text('${entry.key} · ${entry.value.name}'),
+              subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.live.interfaces.topicFor(entry.key) != null)
+                      SelectableText(
+                          widget.live.interfaces.topicFor(entry.key)!),
+                    if (widget.live.session.client == null)
+                      const Text('Connect first')
+                    else
+                      _SubscriptionValue(
+                          client: widget.live.session.client!,
+                          identifier: entry.key),
+                  ]),
+              trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => widget.live.removeSubscription(entry.key))),
+      ]);
 }
 
 class _SubscriptionValue extends StatelessWidget {
-  const _SubscriptionValue({
-    required this.client,
-    required this.identifier,
-  });
-
+  const _SubscriptionValue({required this.client, required this.identifier});
   final BridgeClient client;
   final String identifier;
-
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<BridgePayload>(
+  Widget build(BuildContext context) => StreamBuilder<BridgePayload>(
       stream: client.subscribe(identifier),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Text('Waiting for data');
-        }
-        return Text(snapshot.data!.value.toString());
-      },
-    );
-  }
+      builder: (context, snapshot) => Text(
+          snapshot.hasData ? '${snapshot.data!.value}' : 'Waiting for data'));
 }

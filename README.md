@@ -9,7 +9,7 @@ Rosnect connects a phone to an MQTT broker and publishes/subscribes to bridge id
 - SSL/TLS MQTT: port `8883`.
 - Optional username/password work with either mode.
 - TLS uses system trust and verifies the broker certificate. An optional PEM CA certificate supports private authorities; mutual TLS additionally accepts a PEM client certificate, private key and optional key password. The broker hostname/IP must match its certificate.
-- The green status dot means the broker accepted the connection. Loss of connection clears it. Reconnect manually with Connect/Reconnect.
+- The green status dot means the broker accepted the connection. Sensor streaming additionally requires the matching ROS interface ACK. Loss of connection clears it. Reconnect manually with Connect/Reconnect.
 - Only one connection is owned by `ConnectionSession`. Replacing it disconnects the previous transport first. Failed replacements leave the app disconnected.
 - Settings remain while switching tabs; credentials and certificates are kept in memory only.
 - WebSocket and Redis are unavailable until implemented.
@@ -29,9 +29,9 @@ Messages are UTF-8 JSON envelopes, for example:
 {"identifier":"robot.status","domain_id":7,"value_type":"string","value":"ready","timestamp_unix_ms":1792886400000}
 ```
 
-Incoming malformed envelopes or wrong domains are ignored. The MQTT broker connection does not verify a remote ROS bridge domain. **The current ros2embedded ROS handlers remain placeholders and do not yet implement this JSON MQTT contract or protobuf conversion.**
+Incoming malformed envelopes or wrong domains are ignored. The MQTT broker connection does not verify a remote ROS bridge domain. The updated ros2embedded implements JSON/protobuf data and device-advertised configuration. Rosnect sends retained full snapshots and waits for matching acknowledgements before streaming.
 
-The Sensors tab publishes sample values; actual phone sensor streaming is future work.
+The Sensors tab captures real Android motion, magnetic, location, light, pressure, camera, microphone-level, battery and touch data. See [the live sensor and RViz guide](../ros2embedded/docs/live_phone_sensors.md) for host rebuild commands, message schemas, permissions and testing. Live capture currently supports Android; iOS capture is not implemented.
 
 ## Run and verify
 

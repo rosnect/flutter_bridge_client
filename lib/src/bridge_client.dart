@@ -11,6 +11,15 @@ class BridgeClient {
   bool get isConnected => _handler.isConnected;
   Stream<BridgeConnectionStatus> get connectionChanges =>
       _handler.connectionChanges;
+  Stream<Map<String, Object?>> get configurationMessages =>
+      _handler is BridgeConfigurationChannel
+          ? (_handler as BridgeConfigurationChannel).configurationMessages
+          : const Stream.empty();
+  Future<void> sendConfiguration(Map<String, Object?> snapshot) =>
+      _handler is BridgeConfigurationChannel
+          ? (_handler as BridgeConfigurationChannel).sendConfiguration(snapshot)
+          : Future.error(
+              UnsupportedError('Transport has no configuration channel'));
   int? get domainId => _config?.domainId;
   Stream<BridgePayload> get messages => _handler.messages.where(_matchesDomain);
 

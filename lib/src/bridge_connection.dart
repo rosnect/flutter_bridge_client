@@ -27,7 +27,16 @@ BridgeConnectionHandler createBridgeConnectionHandler(
   };
 }
 
-class MqttBridgeConnectionHandler implements BridgeConnectionHandler {
+abstract interface class BridgeConfigurationChannel {
+  Stream<Map<String, Object?>> get configurationMessages;
+  Future<void> sendConfiguration(Map<String, Object?> snapshot);
+}
+
+class MqttBridgeConnectionHandler
+    implements BridgeConnectionHandler, BridgeConfigurationChannel {
+  final _control = StreamController<Map<String, Object?>>.broadcast();
+  @override
+  Stream<Map<String, Object?>> get configurationMessages => _control.stream;
   final _messages = StreamController<BridgePayload>.broadcast();
   final _status = StreamController<BridgeConnectionStatus>.broadcast();
   MqttServerClient? _client;
@@ -99,6 +108,15 @@ class MqttBridgeConnectionHandler implements BridgeConnectionHandler {
           final message = event.payload as MqttPublishMessage;
           try {
             final json = jsonDecode(utf8.decode(message.payload.message));
+            if (event.topic ==
+                    '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_status' ||
+                event.topic ==
+                    '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_request') {
+              final control = Map<String, Object?>.from(json as Map);
+              control['_control'] = event.topic.split('/').last;
+              _control.add(control);
+              continue;
+            }
             final payload = BridgePayload.fromJson(
               Map<String, Object?>.from(json as Map),
             );
@@ -108,7 +126,26 @@ class MqttBridgeConnectionHandler implements BridgeConnectionHandler {
           }
         }
       });
-      client.subscribe(config.subscribeTopic, MqttQos.atLeastOnce);
+      final topics = {
+        config.subscribeTopic,
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_status',
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_request'
+      };
+      final subscribed = Completer<void>();
+      final remaining = {...topics};
+      client.onSubscribed = (topic) {
+        remaining.remove(topic);
+        if (remaining.isEmpty && !subscribed.isCompleted) subscribed.complete();
+      };
+      client.onSubscribeFail = (topic) {
+        if (!subscribed.isCompleted) {
+          subscribed.completeError(StateError('Broker denied $topic'));
+        }
+      };
+      for (final topic in topics) {
+        client.subscribe(topic, MqttQos.atLeastOnce);
+      }
+      await subscribed.future.timeout(const Duration(seconds: 8));
       _status.add(BridgeConnectionStatus.connected);
     } on Object {
       await disconnect();
@@ -128,6 +165,19 @@ class MqttBridgeConnectionHandler implements BridgeConnectionHandler {
   }
 
   @override
+  Future<void> sendConfiguration(Map<String, Object?> snapshot) async {
+    final config = _config;
+    if (!isConnected || config == null) throw StateError('Broker disconnected');
+    final builder = MqttClientPayloadBuilder()
+      ..addUTF8String(jsonEncode(snapshot));
+    _client!.publishMessage(
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config',
+        MqttQos.atLeastOnce,
+        builder.payload!,
+        retain: true);
+  }
+
+  @override
   Future<void> send(BridgePayload payload) async {
     final config = _config;
     final client = _client;
@@ -140,6 +190,6 @@ class MqttBridgeConnectionHandler implements BridgeConnectionHandler {
     final builder = MqttClientPayloadBuilder()
       ..addUTF8String(jsonEncode(payload.toJson()));
     client.publishMessage(
-        config.publishTopic, MqttQos.atLeastOnce, builder.payload!);
+        config.publishTopic, MqttQos.atMostOnce, builder.payload!);
   }
 }
