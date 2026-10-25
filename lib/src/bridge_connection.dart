@@ -1,14 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
 
 import 'bridge_payload.dart';
 import 'connection_config.dart';
 
-typedef PayloadListener = void Function(BridgePayload payload);
+enum BridgeConnectionStatus { disconnected, connecting, connected }
 
 abstract interface class BridgeConnectionHandler {
   Future<void> connect(ConnectionConfig config);
   Future<void> disconnect();
   bool get isConnected;
+  Stream<BridgeConnectionStatus> get connectionChanges;
   Stream<BridgePayload> get messages;
   Future<void> send(BridgePayload payload);
 }
@@ -17,151 +23,173 @@ BridgeConnectionHandler createBridgeConnectionHandler(
     BridgeTransport transport) {
   return switch (transport) {
     BridgeTransport.mqtt => MqttBridgeConnectionHandler(),
-    BridgeTransport.websocket => WebSocketBridgeConnectionHandler(),
-    BridgeTransport.redis => RedisBridgeConnectionHandler(),
+    _ => throw UnsupportedError('${transport.name} is not implemented yet.'),
   };
 }
 
-abstract class GuardedBridgeConnectionHandler
-    implements BridgeConnectionHandler {
-  ConnectionConfig? _config;
+abstract interface class BridgeConfigurationChannel {
+  Stream<Map<String, Object?>> get configurationMessages;
+  Future<void> sendConfiguration(Map<String, Object?> snapshot);
+}
 
-  ConnectionConfig get config {
-    final current = _config;
-    if (current == null) {
-      throw StateError('Connection handler is not connected');
-    }
-    return current;
-  }
+class MqttBridgeConnectionHandler
+    implements BridgeConnectionHandler, BridgeConfigurationChannel {
+  final _control = StreamController<Map<String, Object?>>.broadcast();
+  @override
+  Stream<Map<String, Object?>> get configurationMessages => _control.stream;
+  final _messages = StreamController<BridgePayload>.broadcast();
+  final _status = StreamController<BridgeConnectionStatus>.broadcast();
+  MqttServerClient? _client;
+  ConnectionConfig? _config;
+  StreamSubscription<dynamic>? _updates;
+
+  @override
+  bool get isConnected =>
+      _client?.connectionStatus?.state == MqttConnectionState.connected;
+  @override
+  Stream<BridgePayload> get messages => _messages.stream;
+  @override
+  Stream<BridgeConnectionStatus> get connectionChanges => _status.stream;
 
   @override
   Future<void> connect(ConnectionConfig config) async {
     config.validate();
-    _config = config;
-    await open(config);
-  }
-
-  @override
-  Future<void> send(BridgePayload payload) {
-    if (payload.domainId != config.domainId) {
-      throw ArgumentError.value(
-        payload.domainId,
-        'payload.domainId',
-        'must match connection domainId ${config.domainId}',
-      );
-    }
-    return sendChecked(payload);
-  }
-
-  Future<void> open(ConnectionConfig config);
-  Future<void> sendChecked(BridgePayload payload);
-}
-
-class MqttBridgeConnectionHandler extends GuardedBridgeConnectionHandler {
-  final _controller = StreamControllerAdapter();
-  bool _connected = false;
-
-  @override
-  bool get isConnected => _connected;
-
-  @override
-  Stream<BridgePayload> get messages => _controller.stream;
-
-  @override
-  Future<void> open(ConnectionConfig config) async {
     if (config.transport != BridgeTransport.mqtt) {
-      throw ArgumentError(
-          'MqttBridgeConnectionHandler requires mqtt transport');
+      throw ArgumentError('MQTT handler requires MQTT transport.');
     }
-    _connected = true;
+    await disconnect();
+    _status.add(BridgeConnectionStatus.connecting);
+    final client = MqttServerClient.withPort(
+      config.host.trim(),
+      config.connectionId,
+      config.effectivePort,
+    );
+    _client = client;
+    _config = config;
+    client.setProtocolV311();
+    client.keepAlivePeriod = 15;
+    client.disconnectOnNoResponsePeriod = 20;
+    client.connectTimeoutPeriod = 8000;
+    client.autoReconnect = false;
+    client.logging(on: false);
+    client.onDisconnected = () {
+      if (identical(_client, client)) {
+        _status.add(BridgeConnectionStatus.disconnected);
+      }
+    };
+    client.connectionMessage = MqttConnectMessage()
+        .withClientIdentifier(config.connectionId)
+        .startClean();
+    try {
+      if (config.useTls) {
+        final context = SecurityContext(withTrustedRoots: true);
+        if (config.caCertificate?.trim().isNotEmpty ?? false) {
+          context
+              .setTrustedCertificatesBytes(utf8.encode(config.caCertificate!));
+        }
+        if (config.clientCertificate?.trim().isNotEmpty ?? false) {
+          context
+              .useCertificateChainBytes(utf8.encode(config.clientCertificate!));
+          context.usePrivateKeyBytes(
+            utf8.encode(config.clientPrivateKey!),
+            password: config.privateKeyPassword,
+          );
+        }
+        client.secure = true;
+        client.securityContext = context;
+      }
+      final status = await client.connect(config.username, config.password);
+      if (status?.state != MqttConnectionState.connected) {
+        throw StateError(
+            'Broker rejected connection: ${status?.returnCode?.name}');
+      }
+      _updates = client.updates!.listen((events) {
+        for (final event in events) {
+          final message = event.payload as MqttPublishMessage;
+          try {
+            final json = jsonDecode(utf8.decode(message.payload.message));
+            if (event.topic ==
+                    '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_status' ||
+                event.topic ==
+                    '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_request') {
+              final control = Map<String, Object?>.from(json as Map);
+              control['_control'] = event.topic.split('/').last;
+              _control.add(control);
+              continue;
+            }
+            final payload = BridgePayload.fromJson(
+              Map<String, Object?>.from(json as Map),
+            );
+            if (payload.domainId == config.domainId) _messages.add(payload);
+          } on Object {
+            // Ignore unrelated or malformed broker messages; keep listening.
+          }
+        }
+      });
+      final topics = {
+        config.subscribeTopic,
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_status',
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config_request'
+      };
+      final subscribed = Completer<void>();
+      final remaining = {...topics};
+      client.onSubscribed = (topic) {
+        remaining.remove(topic);
+        if (remaining.isEmpty && !subscribed.isCompleted) subscribed.complete();
+      };
+      client.onSubscribeFail = (topic) {
+        if (!subscribed.isCompleted) {
+          subscribed.completeError(StateError('Broker denied $topic'));
+        }
+      };
+      for (final topic in topics) {
+        client.subscribe(topic, MqttQos.atLeastOnce);
+      }
+      await subscribed.future.timeout(const Duration(seconds: 8));
+      _status.add(BridgeConnectionStatus.connected);
+    } on Object {
+      await disconnect();
+      rethrow;
+    }
   }
 
   @override
   Future<void> disconnect() async {
-    _connected = false;
+    await _updates?.cancel();
+    _updates = null;
+    final client = _client;
+    _client = null;
+    _config = null;
+    client?.disconnect();
+    _status.add(BridgeConnectionStatus.disconnected);
   }
 
   @override
-  Future<void> sendChecked(BridgePayload payload) async {
-    if (!_connected) {
-      throw StateError('MQTT bridge is not connected');
+  Future<void> sendConfiguration(Map<String, Object?> snapshot) async {
+    final config = _config;
+    if (!isConnected || config == null) throw StateError('Broker disconnected');
+    final builder = MqttClientPayloadBuilder()
+      ..addUTF8String(jsonEncode(snapshot));
+    _client!.publishMessage(
+        '${config.baseTopic}/${config.domainId}/${config.connectionId}/config',
+        MqttQos.atLeastOnce,
+        builder.payload!,
+        retain: true);
+  }
+
+  @override
+  Future<void> send(BridgePayload payload) async {
+    final config = _config;
+    final client = _client;
+    if (!isConnected || config == null || client == null) {
+      throw StateError('MQTT broker is not connected.');
     }
-    // TODO: Wire this to mqtt_client or another chosen MQTT package.
-  }
-}
-
-class WebSocketBridgeConnectionHandler extends GuardedBridgeConnectionHandler {
-  final _controller = StreamControllerAdapter();
-  bool _connected = false;
-
-  @override
-  bool get isConnected => _connected;
-
-  @override
-  Stream<BridgePayload> get messages => _controller.stream;
-
-  @override
-  Future<void> open(ConnectionConfig config) async {
-    if (config.transport != BridgeTransport.websocket) {
-      throw ArgumentError(
-          'WebSocketBridgeConnectionHandler requires websocket transport');
+    if (payload.domainId != config.domainId) {
+      throw ArgumentError('Payload domain must match the connection domain.');
     }
-    _connected = true;
+    final builder = MqttClientPayloadBuilder()
+      ..addUTF8String(jsonEncode(payload.toJson()));
+    client.publishMessage(
+        config.publishTopic, MqttQos.atMostOnce, builder.payload!);
   }
-
-  @override
-  Future<void> disconnect() async {
-    _connected = false;
-  }
-
-  @override
-  Future<void> sendChecked(BridgePayload payload) async {
-    if (!_connected) {
-      throw StateError('WebSocket bridge is not connected');
-    }
-    // TODO: Wire this to web_socket_channel.
-  }
-}
-
-class RedisBridgeConnectionHandler extends GuardedBridgeConnectionHandler {
-  final _controller = StreamControllerAdapter();
-  bool _connected = false;
-
-  @override
-  bool get isConnected => _connected;
-
-  @override
-  Stream<BridgePayload> get messages => _controller.stream;
-
-  @override
-  Future<void> open(ConnectionConfig config) async {
-    if (config.transport != BridgeTransport.redis) {
-      throw ArgumentError(
-          'RedisBridgeConnectionHandler requires redis transport');
-    }
-    _connected = true;
-  }
-
-  @override
-  Future<void> disconnect() async {
-    _connected = false;
-  }
-
-  @override
-  Future<void> sendChecked(BridgePayload payload) async {
-    if (!_connected) {
-      throw StateError('Redis bridge is not connected');
-    }
-    // TODO: Wire this to a Redis pub/sub client suitable for mobile.
-  }
-}
-
-class StreamControllerAdapter {
-  final _controller = StreamController<BridgePayload>.broadcast();
-
-  Stream<BridgePayload> get stream => _controller.stream;
-
-  void add(BridgePayload payload) => _controller.add(payload);
-
-  Future<void> close() => _controller.close();
 }

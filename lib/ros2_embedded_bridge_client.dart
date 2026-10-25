@@ -6,3 +6,5 @@ export 'src/bridge_payload.dart';
 export 'src/connection_config.dart';
 export 'src/sensor_catalog.dart';
 export 'src/subscription_store.dart';
+export 'src/connection_session.dart';
+export 'src/device_interfaces.dart';
