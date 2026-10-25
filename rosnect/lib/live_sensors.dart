@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'sensor_presentation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ros2_embedded_bridge_client/ros2_embedded_bridge_client.dart';
@@ -130,6 +131,8 @@ class LiveSensors extends ChangeNotifier with WidgetsBindingObserver {
   final Map<PhoneSensorKind, String> errors = {};
   final Map<PhoneSensorKind, Object> latest = {};
   final Map<PhoneSensorKind, int> sent = {};
+  final Map<PhoneSensorKind, SensorHistory> history = {};
+  final Map<PhoneSensorKind, int> lastSampleTime = {};
   final Map<String, BridgeValueType> subscriptions = {};
   final Set<PhoneSensorKind> _running = {};
   StreamSubscription<dynamic>? _events;
@@ -328,6 +331,10 @@ class LiveSensors extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _publish(PhoneSensorKind kind, Object value, int timestamp) {
+    final readings = sensorReadings(kind, value);
+    (history[kind] ??= SensorHistory())
+        .add(SensorPlotSample(timestamp, readings));
+    lastSampleTime[kind] = timestamp;
     latest[kind] = kind == PhoneSensorKind.camera
         ? '${(value as List).length} JPEG bytes'
         : value;

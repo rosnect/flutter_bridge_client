@@ -6,7 +6,8 @@ void main() {
   testWidgets('Rosnect has laptop defaults and TLS certificate controls',
       (tester) async {
     await tester.pumpWidget(const RosnectApp());
-    expect(find.text('Rosnect'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('rosnect'), findsOneWidget);
     expect(
         tester
             .widget<TextFormField>(find.byType(TextFormField).first)
@@ -15,6 +16,8 @@ void main() {
         '192.168.0.81');
     expect(find.text('Disconnected'), findsOneWidget);
     expect(find.text('Normal · 1883'), findsOneWidget);
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<bool>));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<bool>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('SSL / TLS · 8883').last);
@@ -29,6 +32,7 @@ void main() {
   });
   testWidgets('tab switching preserves broker input', (tester) async {
     await tester.pumpWidget(const RosnectApp());
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, 'my-broker.local');
     await tester.tap(find.text('Sensors').last);
     await tester.pumpAndSettle();

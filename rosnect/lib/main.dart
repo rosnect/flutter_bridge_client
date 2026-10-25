@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'live_sensors.dart';
+import 'sensor_page.dart';
+import 'sensor_presentation.dart';
+import 'rosnect_style.dart';
+import 'startup_splash.dart';
 import 'package:ros2_embedded_bridge_client/ros2_embedded_bridge_client.dart';
 
 void main() => runApp(const RosnectApp());
@@ -13,12 +17,15 @@ class RosnectApp extends StatefulWidget {
 class _RosnectAppState extends State<RosnectApp> {
   final _session = ConnectionSession();
   late final LiveSensors _live = LiveSensors(_session);
+  final _appearance = AppearanceController();
   int _index = 0;
 
   @override
   void initState() {
     super.initState();
     _live.addListener(_refresh);
+    _appearance.addListener(_refresh);
+    _appearance.load();
   }
 
   void _refresh() {
@@ -30,59 +37,75 @@ class _RosnectAppState extends State<RosnectApp> {
     _live.removeListener(_refresh);
     _live.dispose();
     _session.dispose();
+    _appearance.removeListener(_refresh);
+    _appearance.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Rosnect',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff007f82)),
-        useMaterial3: true,
-        inputDecorationTheme:
-            const InputDecorationTheme(border: OutlineInputBorder()),
-      ),
-      home: AnimatedBuilder(
-        animation: _session,
-        builder: (context, _) => Scaffold(
-          appBar: AppBar(
-            title: Row(children: [
-              Image.asset('assets/dark_rosnect.png', height: 36, width: 36),
-              const SizedBox(width: 10),
-              const Text('Rosnect'),
-            ]),
-            actions: [
-              ConnectionIndicator(session: _session),
-              const SizedBox(width: 16),
-            ],
-          ),
-          body: SafeArea(
-            child: IndexedStack(
-              index: _index,
-              children: [
-                ConnectionsPage(session: _session),
-                SensorPage(live: _live),
-                SubscribePage(live: _live),
-              ],
+    return AppearanceScope(
+        controller: _appearance,
+        child: MaterialApp(
+          title: 'rosnect',
+          debugShowCheckedModeBanner: false,
+          theme: rosnectTheme(Brightness.light),
+          darkTheme: rosnectTheme(Brightness.dark),
+          themeMode: _appearance.mode,
+          home: StartupSplash(
+              child: AnimatedBuilder(
+            animation: _session,
+            builder: (context, _) => Scaffold(
+              appBar: AppBar(
+                title: Row(children: [
+                  const RosnectLogo(),
+                  const SizedBox(width: 10),
+                  const Flexible(
+                      child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text('rosnect',
+                              style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w400,
+                                  letterSpacing: -1.4)))),
+                ]),
+                actions: [
+                  ConnectionIndicator(session: _session),
+                  const SizedBox(width: 4),
+                  const ThemeToggle(),
+                  const SizedBox(width: 6),
+                ],
+              ),
+              body: SafeArea(
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    ConnectionsPage(session: _session),
+                    SensorPage(live: _live),
+                    SubscribePage(live: _live),
+                  ],
+                ),
+              ),
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _index,
+                onDestinationSelected: (value) =>
+                    setState(() => _index = value),
+                destinations: const [
+                  NavigationDestination(
+                      icon: RosnectGlyph('connection', size: 24),
+                      label: 'Connections'),
+                  NavigationDestination(
+                      icon: RosnectGlyph('sensors', size: 24),
+                      label: 'Sensors'),
+                  NavigationDestination(
+                      icon: RosnectGlyph('subscribe', size: 24),
+                      label: 'Subscribe'),
+                ],
+              ),
             ),
-          ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (value) => setState(() => _index = value),
-            destinations: const [
-              NavigationDestination(
-                  icon: Icon(Icons.settings_ethernet), label: 'Connections'),
-              NavigationDestination(
-                  icon: Icon(Icons.sensors), label: 'Sensors'),
-              NavigationDestination(
-                  icon: Icon(Icons.topic), label: 'Subscribe'),
-            ],
-          ),
-        ),
-      ),
-    );
+          )),
+        ));
   }
 }
 
@@ -99,17 +122,7 @@ class ConnectionIndicator extends StatelessWidget {
             : 'Disconnected';
     return Semantics(
       label: 'Broker status: $label',
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.circle,
-            size: 10,
-            color: session.busy
-                ? Colors.orange
-                : session.isConnected
-                    ? Colors.green
-                    : Colors.grey),
-        const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.labelMedium),
-      ]),
+      child: StatusPill(label, active: session.isConnected),
     );
   }
 }
@@ -165,26 +178,42 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Connections',
-              style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 4),
-          const Text(
-              'One active connection at a time. Connecting replaces the current connection.'),
-          const SizedBox(height: 16),
-          const Text(
-              'After connecting, enable sensors in Sensors. ROS interfaces must be acknowledged before data streams.'),
-          const SizedBox(height: 8),
+          const PageHeading(
+              index: '01',
+              title: 'connections',
+              subtitle: 'A direct line to your ROS world.'),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(
+                child: _ConnectionTile(
+                    glyph: 'connection',
+                    label: 'TRANSPORT',
+                    value: 'mqtt',
+                    footer: session.isConnected
+                        ? 'Broker online'
+                        : 'Ready to connect',
+                    active: session.isConnected)),
+            const SizedBox(width: 12),
+            Expanded(
+                child: _ConnectionTile(
+                    glyph: 'subscribe',
+                    label: 'SECURITY',
+                    value: _tls ? 'encrypted' : 'local',
+                    footer: _tls ? 'TLS / 8883' : 'TCP / 1883')),
+          ]),
+          const SizedBox(height: 20),
           Card(
               child: Padding(
             padding: const EdgeInsets.all(16),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                const Icon(Icons.router_outlined),
+                const RosnectGlyph('connection'),
                 const SizedBox(width: 10),
-                Text('MQTT broker',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const Spacer(),
+                Expanded(
+                    child: Text('broker setup',
+                        style: Theme.of(context).textTheme.titleLarge)),
+                const SizedBox(width: 10),
                 Icon(Icons.circle,
                     size: 12,
                     color: session.isConnected ? Colors.green : Colors.grey),
@@ -209,13 +238,19 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<bool>(
+                isExpanded: true,
                 value: _tls,
                 decoration: const InputDecoration(
                     labelText: 'Connection security / port'),
                 items: const [
-                  DropdownMenuItem(value: false, child: Text('Normal · 1883')),
                   DropdownMenuItem(
-                      value: true, child: Text('SSL / TLS · 8883')),
+                      value: false,
+                      child: Text('Normal · 1883',
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem(
+                      value: true,
+                      child: Text('SSL / TLS · 8883',
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ],
                 onChanged: session.busy
                     ? null
@@ -364,10 +399,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
             ]),
           )),
           const SizedBox(height: 12),
-          const ListTile(
-              leading: Icon(Icons.extension_outlined),
-              title: Text('More connection types'),
-              subtitle: Text('WebSocket and Redis are not available yet.')),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+              child: Text(
+                  'ONE ACTIVE CONNECTION / Enable your sources in Sensors once connected.',
+                  style: Theme.of(context).textTheme.labelSmall)),
         ],
       ),
     );
@@ -396,151 +432,42 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   }
 }
 
-class SensorPage extends StatelessWidget {
-  const SensorPage({required this.live, super.key});
-  final LiveSensors live;
+class _ConnectionTile extends StatelessWidget {
+  const _ConnectionTile(
+      {required this.glyph,
+      required this.label,
+      required this.value,
+      required this.footer,
+      this.active = false});
+  final String glyph, label, value, footer;
+  final bool active;
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('Live phone sensors',
-              style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          Text(!live.session.isConnected
-              ? 'Connect to your MQTT broker first.'
-              : live.interfaces.ready
-                  ? 'ROS interfaces ready · streaming enabled sensors'
-                  : 'Waiting for ROS bridge to accept the sensor interfaces…'),
-          if (live.interfaces.error != null)
-            Text(live.interfaces.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          if (live.globalError != null) Text(live.globalError!),
-          Wrap(spacing: 12, children: [
-            TextButton.icon(
-                onPressed:
-                    live.session.isConnected ? live.interfaces.resync : null,
-                icon: const Icon(Icons.sync),
-                label: const Text('Retry ROS setup')),
-            TextButton.icon(
-                onPressed: live.settings,
-                icon: const Icon(Icons.settings),
-                label: const Text('App permissions')),
-          ]),
-          const Text(
-              'Capture pauses when the app is backgrounded or the screen locks. Enable each source to share it.'),
-          for (final item in live.sensors.values)
-            _SensorCard(
-                key: ValueKey(item.definition.kind), live: live, item: item),
-        ],
-      );
-}
-
-class _SensorCard extends StatelessWidget {
-  const _SensorCard({required this.live, required this.item, super.key});
-  final LiveSensors live;
-  final EnabledPhoneSensor item;
-  @override
-  Widget build(BuildContext context) {
-    final kind = item.definition.kind;
-    final supported = live.available[kind] ?? false;
-    final topic = live.interfaces.topicFor(item.identifier);
-    return Card(
-        child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(item.definition.name),
-                    value: item.enabled,
-                    subtitle: Text(supported
-                        ? item.definition.description
-                        : 'Unavailable on this device'),
-                    onChanged:
-                        supported ? (value) => live.enable(kind, value) : null),
-                TextFormField(
-                    initialValue: item.identifier,
-                    decoration: const InputDecoration(
-                        labelText: 'Identifier (submit to apply)'),
-                    onFieldSubmitted: (value) =>
-                        live.rename(kind, value.trim())),
-                const SizedBox(height: 8),
-                Text(sensorMessageTypes[kind]!,
-                    style: Theme.of(context).textTheme.labelSmall),
-                if (topic != null)
-                  SelectableText(topic,
-                      style: Theme.of(context).textTheme.labelSmall),
-                if (live.errors[kind] != null)
-                  Text(live.errors[kind]!,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
-                if (item.enabled && live.latest.containsKey(kind))
-                  Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                          'Sent ${live.sent[kind] ?? 0} · ${live.latest[kind]}',
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis)),
-                if (kind == PhoneSensorKind.camera && item.enabled) ...[
-                  Row(children: [
-                    Expanded(
-                        child: DropdownButtonFormField<bool>(
-                            value: live.frontCamera,
-                            decoration:
-                                const InputDecoration(labelText: 'Camera'),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: false, child: Text('Rear')),
-                              DropdownMenuItem(
-                                  value: true, child: Text('Front'))
-                            ],
-                            onChanged: (v) => live.cameraOptions(front: v))),
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: DropdownButtonFormField<int>(
-                            value: live.cameraFps,
-                            decoration: const InputDecoration(
-                                labelText: 'Frames / second'),
-                            items: [
-                              for (final n in [1, 2, 5])
-                                DropdownMenuItem(
-                                    value: n, child: Text('$n FPS'))
-                            ],
-                            onChanged: (v) => live.cameraOptions(fps: v))),
-                  ]),
-                  const SizedBox(height: 8),
-                  if (live.cameraPreview != null)
-                    Image.memory(live.cameraPreview!,
-                        gaplessPlayback: true,
-                        height: 220,
-                        fit: BoxFit.contain),
-                  const Text(
-                      'JPEG up to 640 × 640 · quality 55 · default 2 FPS'),
-                ],
-                if (kind == PhoneSensorKind.touch && item.enabled)
-                  SizedBox(
-                      height: 160,
-                      child: LayoutBuilder(
-                          builder: (context, constraints) => GestureDetector(
-                              onPanStart: (e) => live.touch(
-                                  e.localPosition, constraints.biggest, 'down'),
-                              onPanUpdate: (e) => live.touch(
-                                  e.localPosition, constraints.biggest, 'move'),
-                              onPanEnd: (_) => live.touch(
-                                  Offset.zero, constraints.biggest, 'up'),
-                              onTapDown: (e) => live.touch(
-                                  e.localPosition, constraints.biggest, 'tap'),
-                              child: Container(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .secondaryContainer,
-                                  alignment: Alignment.center,
-                                  child: const Text(
-                                      'Touch or drag here to publish coordinates'))))),
-              ],
-            )));
-  }
+  Widget build(BuildContext context) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                RosnectGlyph(glyph, size: 22),
+                const Spacer(),
+                Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: active
+                            ? const Color(0xff32956f)
+                            : Theme.of(context).colorScheme.outline))
+              ]),
+              const SizedBox(height: 16),
+              Text(label, style: Theme.of(context).textTheme.labelSmall),
+              const SizedBox(height: 4),
+              Text(value, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 6),
+              Text(footer, style: Theme.of(context).textTheme.labelSmall),
+            ],
+          )));
 }
 
 class SubscribePage extends StatefulWidget {
@@ -562,58 +489,204 @@ class _SubscribePageState extends State<SubscribePage> {
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.all(16), children: [
-        const Text(
-            'Subscriptions become ROS command topics after bridge acknowledgement.'),
+        const PageHeading(
+            index: '03',
+            title: 'subscribe',
+            subtitle: 'Listen to the other side. One channel at a time.'),
+        const SizedBox(height: 20),
+        Card(
+            child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        const RosnectGlyph('subscribe'),
+                        const SizedBox(width: 12),
+                        Text('new channel',
+                            style: Theme.of(context).textTheme.titleLarge)
+                      ]),
+                      const SizedBox(height: 20),
+                      TextField(
+                          controller: _identifier,
+                          decoration: const InputDecoration(
+                              labelText: 'Identifier to subscribe')),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<BridgeValueType>(
+                          value: _type,
+                          decoration: const InputDecoration(
+                              labelText: 'Expected value type'),
+                          items: [
+                            for (final type in BridgeValueType.values)
+                              DropdownMenuItem(
+                                  value: type, child: Text(type.name))
+                          ],
+                          onChanged: (v) => setState(
+                              () => _type = v ?? BridgeValueType.string)),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                              onPressed: () => widget.live.addSubscription(
+                                  _identifier.text.trim(), _type),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add subscription'))),
+                    ]))),
+        if (widget.live.globalError != null)
+          Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(widget.live.globalError!)),
+        const SizedBox(height: 24),
+        Row(children: [
+          Text('YOUR CHANNELS', style: Theme.of(context).textTheme.labelSmall),
+          const Spacer(),
+          StatusPill('${widget.live.subscriptions.length} channels')
+        ]),
         const SizedBox(height: 12),
-        TextField(
-            controller: _identifier,
-            decoration:
-                const InputDecoration(labelText: 'Identifier to subscribe')),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<BridgeValueType>(
-            value: _type,
-            decoration: const InputDecoration(labelText: 'Expected value type'),
-            items: [
-              for (final type in BridgeValueType.values)
-                DropdownMenuItem(value: type, child: Text(type.name))
-            ],
-            onChanged: (v) =>
-                setState(() => _type = v ?? BridgeValueType.string)),
-        FilledButton.icon(
-            onPressed: () =>
-                widget.live.addSubscription(_identifier.text.trim(), _type),
-            icon: const Icon(Icons.add),
-            label: const Text('Add subscription')),
-        if (widget.live.globalError != null) Text(widget.live.globalError!),
-        for (final entry in widget.live.subscriptions.entries)
-          ListTile(
-              title: Text('${entry.key} · ${entry.value.name}'),
-              subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.live.interfaces.topicFor(entry.key) != null)
-                      SelectableText(
-                          widget.live.interfaces.topicFor(entry.key)!),
-                    if (widget.live.session.client == null)
-                      const Text('Connect first')
-                    else
-                      _SubscriptionValue(
-                          client: widget.live.session.client!,
-                          identifier: entry.key),
-                  ]),
-              trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => widget.live.removeSubscription(entry.key))),
+        if (widget.live.subscriptions.isEmpty)
+          Card(
+              child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(children: [
+                    const RosnectGlyph('subscribe', size: 36),
+                    const SizedBox(height: 12),
+                    Text('Quiet for now.',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 6),
+                    const Text('Add an identifier to receive data from ROS.',
+                        textAlign: TextAlign.center),
+                  ])))
+        else
+          GridView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: 200 +
+                      (MediaQuery.textScalerOf(context).scale(14) - 14) * 5),
+              children: [
+                for (final entry in widget.live.subscriptions.entries)
+                  Card(
+                      child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => _open(entry.key, entry.value),
+                    child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                const RosnectGlyph('subscribe', size: 24),
+                                const Spacer(),
+                                IconButton(
+                                    tooltip: 'Remove ${entry.key}',
+                                    visualDensity: VisualDensity.compact,
+                                    icon: const Icon(Icons.close, size: 16),
+                                    onPressed: () => widget.live
+                                        .removeSubscription(entry.key))
+                              ]),
+                              const SizedBox(height: 6),
+                              Text(entry.key,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      Theme.of(context).textTheme.titleSmall),
+                              const Spacer(),
+                              Text(entry.value.name.toUpperCase(),
+                                  style:
+                                      Theme.of(context).textTheme.labelSmall),
+                              const SizedBox(height: 6),
+                              const Text('Tap to view →',
+                                  style: TextStyle(fontSize: 11)),
+                            ])),
+                  ))
+              ]),
+        const SizedBox(height: 16),
+        Text(
+            'Channels become ROS command topics after interface acknowledgement.',
+            style: Theme.of(context).textTheme.labelSmall),
       ]);
+  void _open(String identifier, BridgeValueType type) {
+    FocusScope.of(context).unfocus();
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+                child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                  24, 8, 24, 32 + MediaQuery.viewInsetsOf(context).bottom),
+              child: AnimatedBuilder(
+                  animation: widget.live,
+                  builder: (context, _) => Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('INCOMING / ${type.name.toUpperCase()}',
+                                style: Theme.of(context).textTheme.labelSmall),
+                            const SizedBox(height: 12),
+                            Text(identifier,
+                                style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 20),
+                            ConstrainedBox(
+                                constraints: BoxConstraints(
+                                    maxHeight:
+                                        MediaQuery.sizeOf(context).height *
+                                            .45),
+                                child: SingleChildScrollView(
+                                    child: widget.live.session.client == null
+                                        ? const Text('Connect first')
+                                        : _SubscriptionValue(
+                                            client: widget.live.session.client!,
+                                            identifier: identifier))),
+                            const SizedBox(height: 20),
+                            if (widget.live.interfaces.topicFor(identifier) !=
+                                null)
+                              SelectableText(
+                                  widget.live.interfaces.topicFor(identifier)!,
+                                  style:
+                                      Theme.of(context).textTheme.labelSmall),
+                          ])),
+            )));
+  }
 }
 
-class _SubscriptionValue extends StatelessWidget {
+class _SubscriptionValue extends StatefulWidget {
   const _SubscriptionValue({required this.client, required this.identifier});
   final BridgeClient client;
   final String identifier;
   @override
+  State<_SubscriptionValue> createState() => _SubscriptionValueState();
+}
+
+class _SubscriptionValueState extends State<_SubscriptionValue> {
+  late Stream<BridgePayload> _stream;
+  @override
+  void initState() {
+    super.initState();
+    _stream = widget.client.subscribe(widget.identifier);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SubscriptionValue oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.client != widget.client ||
+        oldWidget.identifier != widget.identifier) {
+      _stream = widget.client.subscribe(widget.identifier);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => StreamBuilder<BridgePayload>(
-      stream: client.subscribe(identifier),
-      builder: (context, snapshot) => Text(
-          snapshot.hasData ? '${snapshot.data!.value}' : 'Waiting for data'));
+      stream: _stream,
+      builder: (context, snapshot) => SelectableText(
+          snapshot.hasData
+              ? formatDisplayValue(snapshot.data!.value)
+              : 'Waiting for data',
+          style: Theme.of(context)
+              .textTheme
+              .bodyLarge
+              ?.copyWith(fontFamily: 'monospace')));
 }

@@ -41,6 +41,20 @@ class MainActivity : FlutterActivity(), SensorEventListener, LocationListener {
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
         sensors = getSystemService(SENSOR_SERVICE) as SensorManager
+        MethodChannel(engine.dartExecutor.binaryMessenger, "rosnect/preferences").setMethodCallHandler { call, result ->
+            val preferences = getSharedPreferences("rosnect_appearance", MODE_PRIVATE)
+            when (call.method) {
+                "getTheme" -> result.success(preferences.getString("theme", "system"))
+                "setTheme" -> {
+                    val mode = call.arguments as? String
+                    if (mode == "dark" || mode == "light") {
+                        preferences.edit().putString("theme", mode).apply()
+                        result.success(null)
+                    } else result.error("invalid_theme", "Expected dark or light", null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         EventChannel(engine.dartExecutor.binaryMessenger, "rosnect/sensor_events").setStreamHandler(object: EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink) { sink = events }
             override fun onCancel(arguments: Any?) { stopAll(); sink = null }
