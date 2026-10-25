@@ -9,11 +9,14 @@ class BridgeClient {
   ConnectionConfig? _config;
 
   bool get isConnected => _handler.isConnected;
+  Stream<BridgeConnectionStatus> get connectionChanges =>
+      _handler.connectionChanges;
   int? get domainId => _config?.domainId;
   Stream<BridgePayload> get messages => _handler.messages.where(_matchesDomain);
 
   Future<void> connect(ConnectionConfig config) async {
     config.validate();
+    _config = null;
     await _handler.connect(config);
     _config = config;
   }
@@ -46,7 +49,7 @@ class BridgeClient {
 
   ConnectionConfig _requireConfig() {
     final config = _config;
-    if (config == null) {
+    if (config == null || !_handler.isConnected) {
       throw StateError('BridgeClient is not connected');
     }
     return config;

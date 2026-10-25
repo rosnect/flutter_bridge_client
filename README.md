@@ -1,46 +1,54 @@
-# Flutter ROS2 Embedded Bridge Client
+# Rosnect / Flutter ROS2 Embedded Bridge Client
 
-Movable Flutter client library and example app for connecting Android/iOS devices into the `ros2embedded` bridge.
+Rosnect connects a phone to an MQTT broker and publishes/subscribes to bridge identifiers. The Android/iOS app lives in `rosnect/`.
 
-The mobile app acts like another bridge device:
+## Connections
 
-- Connect with a selected transport.
-- Use a shared `domainId` guard, matching the launched ROS 2 bridge node.
-- Publish phone sensor values using editable identifiers.
-- Subscribe to identifiers and show incoming values.
+- Default broker: `192.168.0.81` (the development laptop).
+- Normal MQTT: port `1883`.
+- SSL/TLS MQTT: port `8883`.
+- Optional username/password work with either mode.
+- TLS uses system trust and verifies the broker certificate. An optional PEM CA certificate supports private authorities; mutual TLS additionally accepts a PEM client certificate, private key and optional key password. The broker hostname/IP must match its certificate.
+- The green status dot means the broker accepted the connection. Loss of connection clears it. Reconnect manually with Connect/Reconnect.
+- Only one connection is owned by `ConnectionSession`. Replacing it disconnects the previous transport first. Failed replacements leave the app disconnected.
+- Settings remain while switching tabs; credentials and certificates are kept in memory only.
+- WebSocket and Redis are unavailable until implemented.
 
-This client does not try to speak ROS 2 DDS directly from the phone. Instead, it uses bridge transports such as MQTT, WebSocket, or Redis, and the ROS 2 bridge node translates those payloads into ROS topics.
+The phone and laptop must be on a reachable network; the broker must accept LAN clients. USB is used to install the app, while the configured connection uses the phone's network.
 
-## Suggested Connection Methods
+## MQTT wire format
 
-Recommended order:
+For connection `phone_1`, domain `7`:
 
-1. MQTT: best first mobile transport, easy across Wi-Fi and cloud brokers.
-2. WebSocket: good future option for a direct bridge gateway.
-3. Redis: useful for lab/local networks, but less natural for mobile apps.
+- Phone publishes: `ros2embedded/7/phone_1/to_ros`
+- Phone listens: `ros2embedded/7/phone_1/to_device`
 
-## Example Flow
+Messages are UTF-8 JSON envelopes, for example:
 
-1. Open connection page.
-2. Choose transport, host/broker, connection id, and `domainId`.
-3. Connect.
-4. Open sensors page.
-5. Enable sensors and edit identifiers, for example:
-   - `phone.accelerometer`
-   - `phone.gyroscope`
-   - `phone.location`
-   - `phone.light`
-   - `phone.camera.frame`
-6. Open subscribe page to listen for values from ROS 2 or other devices.
+```json
+{"identifier":"robot.status","domain_id":7,"value_type":"string","value":"ready","timestamp_unix_ms":1792886400000}
+```
 
-## Current Status
+Incoming malformed envelopes or wrong domains are ignored. The MQTT broker connection does not verify a remote ROS bridge domain. **The current ros2embedded ROS handlers remain placeholders and do not yet implement this JSON MQTT contract or protobuf conversion.**
 
-This folder is a scaffold that can be moved out into its own Flutter package later. It includes:
+The Sensors tab publishes sample values; actual phone sensor streaming is future work.
 
-- Core Dart interfaces.
-- Domain ID validation.
-- MQTT handler shape.
-- Sensor catalog with editable default identifiers.
-- Example Flutter app screens for connection, sensors, and subscriptions.
+## Run and verify
 
-The MQTT/WebSocket/Redis network internals are intentionally adapter-shaped placeholders until package choices are finalized.
+```sh
+flutter test
+cd rosnect
+flutter pub get
+flutter test
+flutter run -d <phone-device-id>
+```
+
+Build an installable Android debug APK with `flutter build apk --debug` from `rosnect/`. Output: `rosnect/build/app/outputs/flutter-apk/app-debug.apk`.
+
+Run the actual broker smoke test from the package root:
+
+```sh
+dart run tool/mqtt_smoke.dart 192.168.0.81
+```
+
+Launcher icons are generated from `rosnect/assets/dark_rosnect.png` using `dart run flutter_launcher_icons` in `rosnect/`.
