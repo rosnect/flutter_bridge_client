@@ -1,5 +1,8 @@
 # Rosnect bridge client
 
+[![pub.dev](https://img.shields.io/pub/v/ros2_embedded_bridge_client.svg)](https://pub.dev/packages/ros2_embedded_bridge_client)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/rosnect/flutter_bridge_client/blob/main/LICENSE)
+
 `ros2_embedded_bridge_client` connects Flutter applications to
 [ros2embedded](https://github.com/rosnect/ros2embedded) and ROS 2 over MQTT.
 It provides typed JSON messaging, verified TLS, one active connection per
@@ -27,7 +30,14 @@ actual sensor capture in the separate Rosnect app is Android-only.
 
 ## Installation
 
-Add the package to your Flutter application's `pubspec.yaml`:
+Available on [pub.dev](https://pub.dev/packages/ros2_embedded_bridge_client),
+starting with version **0.1.0**. Install it in your Flutter project:
+
+```bash
+flutter pub add ros2_embedded_bridge_client
+```
+
+Or add it to your application's `pubspec.yaml`:
 
 ```yaml
 dependencies:

@@ -11,10 +11,11 @@ package by running the command from `rosnect/`.
 
 ## Account setup
 
-Publishing requires a Google account. It can use the existing
-`rosnect.dev@tutamail.com` address; Gmail is not required. Sign into
-https://pub.dev using that account. The CLI's browser authorization must use that
-same account. Do not put a password, refresh token or credential file in Git.
+Publishing requires a Google account chosen to own/upload the package. Sign
+into https://pub.dev using that account and use the same account for CLI browser
+authorization. The public maintainer contact `rosnect.dev@tutamail.com` is
+independent; it does not need to be the Google login address. Do not put a
+password, refresh token or credential file in Git.
 
 A Rosnect Google account and a verified pub.dev publisher are different things.
 A publisher such as `rosnect.dev` requires actual ownership/verification of that
@@ -68,7 +69,7 @@ flutter pub publish
 ```
 
 Review the archive list and confirm the upload. If prompted, open the CLI's
-Google authorization link and sign in with the Rosnect account. The exact user
+Google authorization link and sign in with the intended package-owner account. The exact user
 interaction must be completed by the account owner. No package is published
 merely by adding metadata/license files or performing a dry run.
 
