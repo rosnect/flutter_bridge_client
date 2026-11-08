@@ -1,3 +1,6 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:collection';
 import 'dart:convert';
 import 'package:ros2_embedded_bridge_client/ros2_embedded_bridge_client.dart';

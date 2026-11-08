@@ -1,0 +1,25 @@
+# Publish the reusable client; the complete Rosnect phone app stays on GitHub.
+/rosnect/
+/.github/
+/docs/
+/CONTRIBUTING.md
+/pub-release/
+/build/
+/coverage/
+/doc/api/
+/.dart_tool/
+/.idea/
+/.vscode/
+/pubspec.lock
+/example/pubspec.lock
+/example/.dart_tool/
+/example/build/
+*.iml
+*.log
+*.tar.gz
+.DS_Store
+.env
+.env.*
+*.jks
+*.keystore
+key.properties

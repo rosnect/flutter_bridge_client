@@ -1,7 +1,15 @@
 name: ros2_embedded_bridge_client
-description: Flutter client library for connecting Android and iOS devices to ros2embedded.
+description: MQTT client for connecting Flutter devices to ros2embedded and ROS 2, with typed payloads, TLS and acknowledged device interface discovery.
 version: 0.1.0
-publish_to: "none"
+homepage: https://github.com/rosnect/flutter_bridge_client
+repository: https://github.com/rosnect/flutter_bridge_client
+issue_tracker: https://github.com/rosnect/flutter_bridge_client/issues
+topics:
+  - ros2
+  - robotics
+  - mqtt
+  - iot
+  - sensors
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -17,4 +25,9 @@ dev_dependencies:
     sdk: flutter
   lints: ^3.0.0
 
-flutter:
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  windows:

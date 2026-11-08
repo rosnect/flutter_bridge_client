@@ -1,3 +1,6 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

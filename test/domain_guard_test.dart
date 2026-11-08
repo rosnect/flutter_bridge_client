@@ -1,3 +1,6 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ros2_embedded_bridge_client/ros2_embedded_bridge_client.dart';

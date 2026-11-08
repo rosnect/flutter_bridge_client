@@ -1,3 +1,7 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
+/// Wire value types used by ros2embedded JSON data envelopes.
 enum BridgeValueType {
   boolValue,
   int32,
@@ -11,7 +15,9 @@ enum BridgeValueType {
   json,
 }
 
+/// An identifier, logical domain, typed value and optional acquisition timestamp.
 class BridgePayload {
+  /// Creates a payload. [value] must match [valueType] at the host bridge.
   const BridgePayload({
     required this.identifier,
     required this.domainId,
@@ -20,12 +26,22 @@ class BridgePayload {
     this.timestamp,
   });
 
+  /// Exact logical identifier associated with a configured ROS binding.
   final String identifier;
+
+  /// Logical routing domain.
   final int domainId;
+
+  /// Encoding/type of [value].
   final BridgeValueType valueType;
+
+  /// Application value or structured native-sensor JSON object.
   final Object value;
+
+  /// Optional measurement timestamp, serialized as Unix milliseconds.
   final DateTime? timestamp;
 
+  /// Serializes the existing snake_case JSON envelope.
   Map<String, Object?> toJson() {
     return {
       'identifier': identifier,
@@ -36,6 +52,7 @@ class BridgePayload {
     };
   }
 
+  /// Decodes an envelope; malformed fields or unknown types throw.
   static BridgePayload fromJson(Map<String, Object?> json) {
     return BridgePayload(
       identifier: json['identifier'] as String,

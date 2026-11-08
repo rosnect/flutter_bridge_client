@@ -1,3 +1,6 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,17 +11,31 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import 'bridge_payload.dart';
 import 'connection_config.dart';
 
+/// Broker connection states, separate from interface-configuration readiness.
 enum BridgeConnectionStatus { disconnected, connecting, connected }
 
+/// Transport interface used by [BridgeClient] and custom implementations.
 abstract interface class BridgeConnectionHandler {
+  /// Opens a connection after validating [config].
   Future<void> connect(ConnectionConfig config);
+
+  /// Disconnects and releases transport resources.
   Future<void> disconnect();
+
+  /// Whether the transport is connected.
   bool get isConnected;
+
+  /// Broadcast transport-state notifications.
   Stream<BridgeConnectionStatus> get connectionChanges;
+
+  /// Broadcast decoded payloads received from the transport.
   Stream<BridgePayload> get messages;
+
+  /// Sends an application payload; transport delivery is not ROS execution acknowledgement.
   Future<void> send(BridgePayload payload);
 }
 
+/// Creates the selected transport; only MQTT is currently implemented.
 BridgeConnectionHandler createBridgeConnectionHandler(
     BridgeTransport transport) {
   return switch (transport) {
@@ -27,11 +44,19 @@ BridgeConnectionHandler createBridgeConnectionHandler(
   };
 }
 
+/// Optional full-snapshot interface-discovery channel for a transport.
 abstract interface class BridgeConfigurationChannel {
+  /// Host configuration requests and acknowledgements.
   Stream<Map<String, Object?>> get configurationMessages;
+
+  /// Publishes an entire desired interface snapshot, not a patch.
   Future<void> sendConfiguration(Map<String, Object?> snapshot);
 }
 
+/// MQTT 3.1.1 JSON transport with verified TLS and device configuration.
+///
+/// Data is sent at QoS 0 without retention. Configuration uses QoS 1 and
+/// retention. Reconnection is explicit; only one device should own a connection ID.
 class MqttBridgeConnectionHandler
     implements BridgeConnectionHandler, BridgeConfigurationChannel {
   final _control = StreamController<Map<String, Object?>>.broadcast();

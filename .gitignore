@@ -1,0 +1,26 @@
+# Generated Dart/Flutter files and library lockfile.
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+/build/
+/coverage/
+/doc/api/
+/pubspec.lock
+/example/pubspec.lock
+
+# Editors, local machine configuration and package archives.
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.log
+*.tar.gz
+/pub-release/
+
+# Local credentials and signing material.
+.env
+.env.*
+*.jks
+*.keystore
+key.properties

@@ -1,3 +1,6 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -5,22 +8,36 @@ import 'connection_session.dart';
 
 /// Full, acknowledged device interface snapshots, independent of device hardware.
 class DeviceInterfaces extends ChangeNotifier {
+  /// Tracks the desired interfaces and the lifecycle of [session].
   DeviceInterfaces(this.session) {
     session.addListener(_connectionChanged);
   }
+
+  /// The single active transport session to configure.
   final ConnectionSession session;
   Object? _client;
   StreamSubscription<Map<String, Object?>>? _control;
   Timer? _retry;
   List<Map<String, Object?>> _desired = [];
   Map<String, Object?>? _pending, _accepted;
+
+  /// Host-normalized bindings from the last accepted configuration.
   List<Map<String, Object?>> normalized = [];
+
+  /// Latest configuration rejection, send failure or acknowledgement timeout.
   String? error;
+
+  /// Connection namespace reported by the host acknowledgement.
   String rosNamespace = '';
+
+  /// True only after a matching accepted snapshot for the desired interface set.
+  ///
+  /// This records configuration acceptance, not ongoing host/device liveness.
   bool ready = false;
   int _attempts = 0, _revision = 0;
   bool _disposed = false;
 
+  /// Replaces the entire desired binding set and coalesces in-flight changes.
   void update(List<Map<String, Object?>> bindings) {
     if (jsonEncode(bindings) == jsonEncode(_desired)) return;
     _desired = bindings.map((b) => Map<String, Object?>.from(b)).toList();
@@ -30,6 +47,7 @@ class DeviceInterfaces extends ChangeNotifier {
     _notify();
   }
 
+  /// Starts a new configuration exchange for the current desired bindings.
   void resync() {
     _pending = null;
     _retry?.cancel();
@@ -156,6 +174,7 @@ class DeviceInterfaces extends ChangeNotifier {
     _notify();
   }
 
+  /// Returns the accepted fully qualified output topic for an identifier, if known.
   String? topicFor(String identifier) {
     for (final binding in normalized) {
       if (binding['identifier'] == identifier) {

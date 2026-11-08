@@ -1,3 +1,7 @@
+// Copyright 2026 Rosnect contributors.
+// SPDX-License-Identifier: Apache-2.0
+
+/// Sensor categories used by the example phone application; no hardware is captured here.
 enum PhoneSensorKind {
   accelerometer,
   gyroscope,
@@ -11,7 +15,9 @@ enum PhoneSensorKind {
   touch,
 }
 
+/// Static labels and identifiers for a phone sensor.
 class PhoneSensorDefinition {
+  /// Creates a catalog entry.
   const PhoneSensorDefinition({
     required this.kind,
     required this.name,
@@ -20,24 +26,41 @@ class PhoneSensorDefinition {
     this.requiresPermission = false,
   });
 
+  /// Sensor category.
   final PhoneSensorKind kind;
+
+  /// User-facing sensor name.
   final String name;
+
+  /// Suggested bridge identifier.
   final String defaultIdentifier;
+
+  /// User-facing capability description.
   final String description;
+
+  /// Whether platform capture normally requires runtime permission.
   final bool requiresPermission;
 }
 
+/// Immutable application selection for a catalog sensor.
 class EnabledPhoneSensor {
+  /// Creates an enabled/disabled sensor selection.
   const EnabledPhoneSensor({
     required this.definition,
     required this.identifier,
     this.enabled = false,
   });
 
+  /// Underlying sensor definition.
   final PhoneSensorDefinition definition;
+
+  /// Selected logical bridge identifier.
   final String identifier;
+
+  /// Whether the application intends to share this sensor.
   final bool enabled;
 
+  /// Copies the selection with changed identifier and/or enabled state.
   EnabledPhoneSensor copyWith({
     String? identifier,
     bool? enabled,
@@ -50,6 +73,7 @@ class EnabledPhoneSensor {
   }
 }
 
+/// Default phone sensor descriptions; availability must be checked on the device.
 const phoneSensorCatalog = <PhoneSensorDefinition>[
   PhoneSensorDefinition(
     kind: PhoneSensorKind.accelerometer,
@@ -116,6 +140,7 @@ const phoneSensorCatalog = <PhoneSensorDefinition>[
   ),
 ];
 
+/// Creates fresh selections with all sensors initially disabled.
 List<EnabledPhoneSensor> defaultSensorSelection() {
   return [
     for (final definition in phoneSensorCatalog)

@@ -1,0 +1,17 @@
+name: ros2_embedded_bridge_client_example
+description: Minimal Flutter MQTT and ROS interface example.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ros2_embedded_bridge_client:
+    path: ..
+
+flutter:
+  uses-material-design: true

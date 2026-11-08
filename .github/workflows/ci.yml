@@ -1,0 +1,46 @@
+name: Flutter checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          # Matches the SDK used to validate this first release locally.
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+      - name: Resolve package dependencies
+        run: flutter pub get
+      - name: Resolve app dependencies
+        working-directory: rosnect
+        run: flutter pub get
+      - name: Resolve example dependencies
+        working-directory: example
+        run: flutter pub get
+      - name: Check package formatting
+        run: dart format --output=none --set-exit-if-changed lib test tool example/lib
+      - name: Analyze package
+        run: flutter analyze
+      - name: Test package
+        run: flutter test
+      - name: Analyze Rosnect app
+        working-directory: rosnect
+        run: flutter analyze
+      - name: Test Rosnect app
+        working-directory: rosnect
+        run: flutter test
+      - name: Analyze example
+        working-directory: example
+        run: flutter analyze
+      - name: Validate publication archive
+        run: flutter pub publish --dry-run
