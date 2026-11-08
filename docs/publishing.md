@@ -55,9 +55,8 @@ Rosnect APK/platform projects, build/cache directories, machine paths or secrets
 A dry run does not authenticate or upload. The package name was unclaimed when
 preparation began; availability is checked again by pub during publishing.
 
-Before uploading, remove the README's initial-release preparation note, commit
-the reviewed release changes and push them so the public license/docs correspond
-to the uploaded source. A clean Git status makes the dry run easier to review.
+Before uploading, commit the reviewed release changes and push them so the
+public license/docs correspond to the uploaded source. A clean Git status makes the dry run easier to review.
 Do not use `--skip-validation` or `--force` to hide release problems.
 
 ## Upload

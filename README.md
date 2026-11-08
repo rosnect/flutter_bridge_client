@@ -27,14 +27,14 @@ actual sensor capture in the separate Rosnect app is Android-only.
 
 ## Installation
 
-The initial `0.1.0` pub.dev release is being prepared. Once it is published:
+Add the package to your Flutter application's `pubspec.yaml`:
 
 ```yaml
 dependencies:
   ros2_embedded_bridge_client: ^0.1.0
 ```
 
-Before publication, use the public Git repository:
+Alternatively, depend on the public Git repository:
 
 ```yaml
 dependencies:
