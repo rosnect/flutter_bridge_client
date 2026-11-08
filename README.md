@@ -246,4 +246,4 @@ Copyright 2026 Rosnect contributors. Licensed under the
 [Apache License, Version 2.0](https://github.com/rosnect/flutter_bridge_client/blob/main/LICENSE).
 See `LICENSE` and `NOTICE`. Third-party dependencies retain their own licenses.
 
-Maintained by Rosnect. Contact: [rosnect.dev@tutaemail.com](mailto:rosnect.dev@tutaemail.com).
+Maintained by Rosnect. Contact: [rosnect.dev@tutamail.com](mailto:rosnect.dev@tutamail.com).

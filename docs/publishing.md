@@ -2,7 +2,7 @@
 
 Package: `ros2_embedded_bridge_client`, initial version `0.1.0`.
 Source: https://github.com/rosnect/flutter_bridge_client
-License: Apache-2.0. Contact: rosnect.dev@tutaemail.com.
+License: Apache-2.0. Contact: rosnect.dev@tutamail.com.
 
 The root package is the reusable client. The `rosnect/` phone application stays
 `publish_to: none` and is excluded from the pub.dev package. `.pubignore` excludes
@@ -12,7 +12,7 @@ package by running the command from `rosnect/`.
 ## Account setup
 
 Publishing requires a Google account. It can use the existing
-`rosnect.dev@tutaemail.com` address; Gmail is not required. Sign into
+`rosnect.dev@tutamail.com` address; Gmail is not required. Sign into
 https://pub.dev using that account. The CLI's browser authorization must use that
 same account. Do not put a password, refresh token or credential file in Git.
 

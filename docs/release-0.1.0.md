@@ -1,7 +1,7 @@
 # Initial public release validation
 
 Package: `ros2_embedded_bridge_client` 0.1.0.
-License: Apache-2.0. Maintainer contact: rosnect.dev@tutaemail.com.
+License: Apache-2.0. Maintainer contact: rosnect.dev@tutamail.com.
 
 Completed locally with Flutter 3.22.0 / Dart 3.4.0:
 
